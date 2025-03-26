@@ -23,22 +23,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Initialize doctors list
 async function initDoctors() {
-    const doctors = await getData('Doctors');
-    const doctorsList = document.getElementById('doctorsList');
-    const leaveDoctorSelect = document.getElementById('leaveDoctor');
-    
-    doctorsList.innerHTML = '';
-    leaveDoctorSelect.innerHTML = '<option value="">Select Doctor</option>';
-    
-    if (doctors && doctors.length > 0) {
-        doctors.forEach(doctor => {
-            if (doctor[0]) {
-                addDoctorInput(doctor[0]);
-                leaveDoctorSelect.innerHTML += `<option value="${doctor[0]}">${doctor[0]}</option>`;
-            }
-        });
-    } else {
-        addDoctorInput();
+    showLoading();
+    try {
+        const doctors = await getData('Doctors');
+        const doctorsList = document.getElementById('doctorsList');
+        const leaveDoctorSelect = document.getElementById('leaveDoctor');
+        
+        doctorsList.innerHTML = '';
+        leaveDoctorSelect.innerHTML = '<option value="">Select Doctor</option>';
+        
+        if (doctors && doctors.length > 0) {
+            doctors.forEach(doctor => {
+                if (doctor[0]) {
+                    addDoctorInput(doctor[0]);
+                    // Add to leave doctor dropdown
+                    const option = document.createElement('option');
+                    option.value = doctor[0];
+                    option.textContent = doctor[0];
+                    leaveDoctorSelect.appendChild(option);
+                }
+            });
+        } else {
+            addDoctorInput();
+        }
+    } catch (error) {
+        console.error('Error loading doctors:', error);
+        alert('Failed to load doctors. Please check console for details.');
+    } finally {
+        hideLoading();
     }
 }
 
@@ -60,48 +72,80 @@ function addDoctorInput(value = '') {
 
 // Save doctors to Google Sheet
 async function saveDoctors() {
-    const doctorInputs = document.querySelectorAll('.doctor-name');
-    const doctors = Array.from(doctorInputs).map(input => [input.value.trim()]).filter(d => d[0]);
-    
-    if (doctors.length === 0) {
-        alert('Please add at least one doctor');
-        return;
+    showLoading();
+    try {
+        const doctorInputs = document.querySelectorAll('.doctor-name');
+        const doctors = Array.from(doctorInputs).map(input => [input.value.trim()]).filter(d => d[0]);
+        
+        if (doctors.length === 0) {
+            alert('Please add at least one doctor');
+            return;
+        }
+        
+        // Clear existing doctors first
+        await postData('Doctors', [], true);
+        
+        // Save new doctors
+        await postData('Doctors', doctors, false);
+        
+        // Refresh UI
+        await initDoctors();
+        alert('Doctors saved successfully');
+    } catch (error) {
+        console.error('Error saving doctors:', error);
+        alert('Failed to save doctors. Please check console for details.');
+    } finally {
+        hideLoading();
     }
-    
-    await postData('Doctors', doctors, true);
-    await initDoctors();
-    alert('Doctors saved successfully');
 }
 
 // Initialize leave dates
 async function initLeaveDates() {
-    const leaveDates = await getData('LeaveDates');
-    // We'll just load them for the scheduling algorithm
+    try {
+        const leaveDates = await getData('LeaveDates');
+        // Data is loaded and will be used in schedule generation
+    } catch (error) {
+        console.error('Error loading leave dates:', error);
+    }
 }
 
 // Add a leave date
 async function addLeaveDate() {
-    const doctor = document.getElementById('leaveDoctor').value;
-    const date = document.getElementById('leaveDate').value;
-    
-    if (!doctor || !date) {
-        alert('Please select a doctor and date');
-        return;
+    showLoading();
+    try {
+        const doctor = document.getElementById('leaveDoctor').value;
+        const date = document.getElementById('leaveDate').value;
+        
+        if (!doctor || !date) {
+            alert('Please select a doctor and date');
+            return;
+        }
+        
+        const newLeave = [[doctor, date]];
+        await postData('LeaveDates', newLeave, false);
+        document.getElementById('leaveDate').value = '';
+        alert('Leave date added successfully');
+    } catch (error) {
+        console.error('Error adding leave date:', error);
+        alert('Failed to add leave date. Please check console for details.');
+    } finally {
+        hideLoading();
     }
-    
-    const leaveDates = await getData('LeaveDates');
-    const newLeave = [[doctor, date]];
-    
-    await postData('LeaveDates', newLeave, false);
-    document.getElementById('leaveDate').value = '';
-    alert('Leave date added');
 }
 
 // Clear all leave dates
 async function clearLeaveDates() {
     if (confirm('Are you sure you want to clear all leave dates?')) {
-        await postData('LeaveDates', [], true);
-        alert('Leave dates cleared');
+        showLoading();
+        try {
+            await postData('LeaveDates', [], true);
+            alert('Leave dates cleared successfully');
+        } catch (error) {
+            console.error('Error clearing leave dates:', error);
+            alert('Failed to clear leave dates. Please check console for details.');
+        } finally {
+            hideLoading();
+        }
     }
 }
 
@@ -140,37 +184,45 @@ function updateCustomDutiesDisplay() {
 
 // Generate schedule
 async function generateSchedule() {
-    const startDate = document.getElementById('startDate').value;
-    const duration = parseInt(document.getElementById('duration').value);
-    const defaultDutyType = document.getElementById('defaultDutyType').value;
-    
-    if (!startDate || isNaN(duration) || duration < 1) {
-        alert('Please enter valid start date and duration');
-        return;
-    }
-    
-    const doctorsData = await getData('Doctors');
-    const doctors = doctorsData.map(d => d[0]).filter(d => d);
-    
-    if (doctors.length < 2) {
-        alert('Please add at least 2 doctors');
-        return;
-    }
-    
-    const leaveDatesData = await getData('LeaveDates');
-    const leaveDates = {};
-    leaveDatesData.forEach(ld => {
-        if (ld[0] && ld[1]) {
-            if (!leaveDates[ld[0]]) leaveDates[ld[0]] = [];
-            leaveDates[ld[0]].push(ld[1]);
+    showLoading();
+    try {
+        const startDate = document.getElementById('startDate').value;
+        const duration = parseInt(document.getElementById('duration').value);
+        const defaultDutyType = document.getElementById('defaultDutyType').value;
+        
+        if (!startDate || isNaN(duration) || duration < 1) {
+            alert('Please enter valid start date and duration');
+            return;
         }
-    });
-    
-    const schedule = createSchedule(doctors, new Date(startDate), duration, defaultDutyType, leaveDates);
-    await postData('Schedule', schedule, true);
-    await loadSchedule();
-    await loadDistribution();
-    alert('Schedule generated successfully');
+        
+        const doctorsData = await getData('Doctors');
+        const doctors = doctorsData.map(d => d[0]).filter(d => d);
+        
+        if (doctors.length < 2) {
+            alert('Please add at least 2 doctors');
+            return;
+        }
+        
+        const leaveDatesData = await getData('LeaveDates');
+        const leaveDates = {};
+        leaveDatesData.forEach(ld => {
+            if (ld[0] && ld[1]) {
+                if (!leaveDates[ld[0]]) leaveDates[ld[0]] = [];
+                leaveDates[ld[0]].push(ld[1]);
+            }
+        });
+        
+        const schedule = createSchedule(doctors, new Date(startDate), duration, defaultDutyType, leaveDates);
+        await postData('Schedule', schedule, true);
+        await loadSchedule();
+        await loadDistribution();
+        alert('Schedule generated successfully');
+    } catch (error) {
+        console.error('Error generating schedule:', error);
+        alert('Failed to generate schedule. Please check console for details.');
+    } finally {
+        hideLoading();
+    }
 }
 
 // Create schedule algorithm
@@ -182,7 +234,7 @@ function createSchedule(doctors, startDate, durationMonths, defaultDutyType, lea
     const dutyCounts = {};
     const weekendCounts = {};
     doctors.forEach(doctor => {
-        dutyCounts[doctor] = { total: 0, weekdays: 0, saturdays: 0, sundays: 0 };
+        dutyCounts[doctor] = { total: 0, weekdays: 0, saturdays: 0, sundays: 0, '12-hour': 0, '24-hour': 0 };
         weekendCounts[doctor] = 0;
     });
     
@@ -212,6 +264,7 @@ function createSchedule(doctors, startDate, durationMonths, defaultDutyType, lea
         // Determine duty type (custom or default)
         const dutyType = customDuties[dateStr] || defaultDutyType;
         const is24Hour = dutyType === '24';
+        const dutyTypeText = is24Hour ? '24-hour' : '12-hour';
         
         // Find available doctors (not on leave and not having consecutive duty)
         const availableDoctors = shuffledDoctors.filter(doctor => {
@@ -256,6 +309,9 @@ function createSchedule(doctors, startDate, durationMonths, defaultDutyType, lea
         dutyCounts[campus1Doctor].total++;
         dutyCounts[campus2Doctor].total++;
         
+        dutyCounts[campus1Doctor][dutyTypeText]++;
+        dutyCounts[campus2Doctor][dutyTypeText]++;
+        
         if (dayOfWeek === 6) {
             dutyCounts[campus1Doctor].saturdays++;
             dutyCounts[campus2Doctor].saturdays++;
@@ -285,7 +341,7 @@ function createSchedule(doctors, startDate, durationMonths, defaultDutyType, lea
             dayOfWeek === 0 ? 'Sunday' : dayOfWeek === 6 ? 'Saturday' : 'Weekday',
             campus1Doctor,
             campus2Doctor,
-            is24Hour ? '24-hour' : '12-hour'
+            dutyTypeText
         ]);
     }
     
@@ -294,117 +350,141 @@ function createSchedule(doctors, startDate, durationMonths, defaultDutyType, lea
 
 // Load schedule table
 async function loadSchedule() {
-    const schedule = await getData('Schedule');
-    const table = document.getElementById('scheduleTable');
-    
-    if (!schedule || schedule.length <= 1) {
-        table.innerHTML = '<p>No schedule generated yet</p>';
-        return;
-    }
-    
-    let html = '<table class="table table-bordered table-hover"><thead><tr>';
-    schedule[0].forEach(header => {
-        html += `<th>${header}</th>`;
-    });
-    html += '</tr></thead><tbody>';
-    
-    for (let i = 1; i < schedule.length; i++) {
-        const row = schedule[i];
-        const dayClass = row[1] === 'Saturday' || row[1] === 'Sunday' ? 'weekend' : '';
-        const campus1Class = 'campus1';
-        const campus2Class = 'campus2';
+    showLoading();
+    try {
+        const schedule = await getData('Schedule');
+        const table = document.getElementById('scheduleTable');
         
-        html += `<tr class="${dayClass}">`;
-        html += `<td>${row[0]}</td>`;
-        html += `<td>${row[1]}</td>`;
-        html += `<td class="${campus1Class}">${row[2]}</td>`;
-        html += `<td class="${campus2Class}">${row[3]}</td>`;
-        html += `<td>${row[4]}</td>`;
-        html += '</tr>';
+        if (!schedule || schedule.length <= 1) {
+            table.innerHTML = '<p>No schedule generated yet</p>';
+            return;
+        }
+        
+        let html = '<table class="table table-bordered table-hover"><thead><tr>';
+        schedule[0].forEach(header => {
+            html += `<th>${header}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+        
+        for (let i = 1; i < schedule.length; i++) {
+            const row = schedule[i];
+            const dayClass = row[1] === 'Saturday' || row[1] === 'Sunday' ? 'weekend' : '';
+            const campus1Class = 'campus1';
+            const campus2Class = 'campus2';
+            
+            html += `<tr class="${dayClass}">`;
+            html += `<td>${row[0]}</td>`;
+            html += `<td>${row[1]}</td>`;
+            html += `<td class="${campus1Class}">${row[2]}</td>`;
+            html += `<td class="${campus2Class}">${row[3]}</td>`;
+            html += `<td>${row[4]}</td>`;
+            html += '</tr>';
+        }
+        
+        html += '</tbody></table>';
+        table.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading schedule:', error);
+        document.getElementById('scheduleTable').innerHTML = '<p>Error loading schedule</p>';
+    } finally {
+        hideLoading();
     }
-    
-    html += '</tbody></table>';
-    table.innerHTML = html;
 }
 
 // Load distribution table
 async function loadDistribution() {
-    const doctors = await getData('Doctors');
-    const schedule = await getData('Schedule');
-    
-    if (!doctors || doctors.length === 0 || !schedule || schedule.length <= 1) {
-        document.getElementById('distributionTable').innerHTML = '<p>No data available</p>';
-        return;
-    }
-    
-    // Calculate distribution
-    const distribution = {};
-    doctors.forEach(doctor => {
-        if (doctor[0]) {
-            distribution[doctor[0]] = {
-                total: 0,
-                weekdays: 0,
-                saturdays: 0,
-                sundays: 0,
-                '12-hour': 0,
-                '24-hour': 0
-            };
+    showLoading();
+    try {
+        const doctors = await getData('Doctors');
+        const schedule = await getData('Schedule');
+        
+        if (!doctors || doctors.length === 0 || !schedule || schedule.length <= 1) {
+            document.getElementById('distributionTable').innerHTML = '<p>No data available</p>';
+            return;
         }
-    });
-    
-    for (let i = 1; i < schedule.length; i++) {
-        const row = schedule[i];
-        const campus1Doctor = row[2];
-        const campus2Doctor = row[3];
-        const dayType = row[1];
-        const dutyType = row[4];
         
-        distribution[campus1Doctor].total++;
-        distribution[campus2Doctor].total++;
+        // Calculate distribution
+        const distribution = {};
+        doctors.forEach(doctor => {
+            if (doctor[0]) {
+                distribution[doctor[0]] = {
+                    total: 0,
+                    weekdays: 0,
+                    saturdays: 0,
+                    sundays: 0,
+                    '12-hour': 0,
+                    '24-hour': 0
+                };
+            }
+        });
         
-        distribution[campus1Doctor][dutyType]++;
-        distribution[campus2Doctor][dutyType]++;
-        
-        if (dayType === 'Weekday') {
-            distribution[campus1Doctor].weekdays++;
-            distribution[campus2Doctor].weekdays++;
-        } else if (dayType === 'Saturday') {
-            distribution[campus1Doctor].saturdays++;
-            distribution[campus2Doctor].saturdays++;
-        } else if (dayType === 'Sunday') {
-            distribution[campus1Doctor].sundays++;
-            distribution[campus2Doctor].sundays++;
+        for (let i = 1; i < schedule.length; i++) {
+            const row = schedule[i];
+            const campus1Doctor = row[2];
+            const campus2Doctor = row[3];
+            const dayType = row[1];
+            const dutyType = row[4];
+            
+            distribution[campus1Doctor].total++;
+            distribution[campus2Doctor].total++;
+            
+            distribution[campus1Doctor][dutyType]++;
+            distribution[campus2Doctor][dutyType]++;
+            
+            if (dayType === 'Weekday') {
+                distribution[campus1Doctor].weekdays++;
+                distribution[campus2Doctor].weekdays++;
+            } else if (dayType === 'Saturday') {
+                distribution[campus1Doctor].saturdays++;
+                distribution[campus2Doctor].saturdays++;
+            } else if (dayType === 'Sunday') {
+                distribution[campus1Doctor].sundays++;
+                distribution[campus2Doctor].sundays++;
+            }
         }
+        
+        // Create table
+        let html = '<table class="table table-bordered table-hover"><thead><tr>' +
+                   '<th>Doctor</th><th>Total</th><th>Weekdays</th><th>Saturdays</th><th>Sundays</th><th>12-hour</th><th>24-hour</th></tr></thead><tbody>';
+        
+        for (const doctor in distribution) {
+            const stats = distribution[doctor];
+            html += `<tr>
+                <td>${doctor}</td>
+                <td>${stats.total}</td>
+                <td>${stats.weekdays}</td>
+                <td>${stats.saturdays}</td>
+                <td>${stats.sundays}</td>
+                <td>${stats['12-hour']}</td>
+                <td>${stats['24-hour']}</td>
+            </tr>`;
+        }
+        
+        html += '</tbody></table>';
+        document.getElementById('distributionTable').innerHTML = html;
+    } catch (error) {
+        console.error('Error loading distribution:', error);
+        document.getElementById('distributionTable').innerHTML = '<p>Error loading distribution</p>';
+    } finally {
+        hideLoading();
     }
-    
-    // Create table
-    let html = '<table class="table table-bordered table-hover"><thead><tr>' +
-               '<th>Doctor</th><th>Total</th><th>Weekdays</th><th>Saturdays</th><th>Sundays</th><th>12-hour</th><th>24-hour</th></tr></thead><tbody>';
-    
-    for (const doctor in distribution) {
-        const stats = distribution[doctor];
-        html += `<tr>
-            <td>${doctor}</td>
-            <td>${stats.total}</td>
-            <td>${stats.weekdays}</td>
-            <td>${stats.saturdays}</td>
-            <td>${stats.sundays}</td>
-            <td>${stats['12-hour']}</td>
-            <td>${stats['24-hour']}</td>
-        </tr>`;
-    }
-    
-    html += '</tbody></table>';
-    document.getElementById('distributionTable').innerHTML = html;
 }
 
 // Clear schedule
 async function clearSchedule() {
     if (confirm('Are you sure you want to clear the schedule?')) {
-        await postData('Schedule', [], true);
-        await loadSchedule();
-        await loadDistribution();
-        alert('Schedule cleared');
+        showLoading();
+        try {
+            await postData('Schedule', [], true);
+            await loadSchedule();
+            await loadDistribution();
+            alert('Schedule cleared successfully');
+        } catch (error) {
+            console.error('Error clearing schedule:', error);
+            alert('Failed to clear schedule. Please check console for details.');
+        } finally {
+            hideLoading();
+        }
     }
 }
 
@@ -424,25 +504,57 @@ function formatDate(date) {
 // Get data from Google Sheet
 async function getData(sheetName) {
     try {
-        const response = await fetch(`${SCRIPT_URL}?sheet=${sheetName}`);
-        return await response.json();
+        const response = await fetch(`${SCRIPT_URL}?sheet=${encodeURIComponent(sheetName)}`);
+        const result = await response.json();
+        
+        if (result.status === "failed") {
+            throw new Error(result.error || "Unknown error occurred");
+        }
+        
+        return result.data || [];
     } catch (error) {
-        console.error('Error fetching data:', error);
-        return null;
+        console.error(`Error fetching data from ${sheetName}:`, error);
+        throw error;
     }
 }
 
 // Post data to Google Sheet
 async function postData(sheetName, data, clearFirst = false) {
     try {
-        let url = `${SCRIPT_URL}?sheet=${sheetName}&action=append&data=${encodeURIComponent(JSON.stringify(data))}`;
+        let url = `${SCRIPT_URL}?sheet=${encodeURIComponent(sheetName)}`;
+        
         if (clearFirst) {
-            url = `${SCRIPT_URL}?sheet=${sheetName}&action=clear`;
-            await fetch(url);
-            url = `${SCRIPT_URL}?sheet=${sheetName}&action=append&data=${encodeURIComponent(JSON.stringify(data))}`;
+            url += '&action=clear';
+            const clearResponse = await fetch(url, { method: 'POST' });
+            const clearResult = await clearResponse.json();
+            
+            if (clearResult.status === "failed") {
+                throw new Error(clearResult.error || "Failed to clear sheet");
+            }
         }
-        await fetch(url, { method: clearFirst ? 'POST' : 'POST' });
+        
+        if (data.length > 0) {
+            url += `&action=append&data=${encodeURIComponent(JSON.stringify(data))}`;
+            const appendResponse = await fetch(url, { method: 'POST' });
+            const appendResult = await appendResponse.json();
+            
+            if (appendResult.status === "failed") {
+                throw new Error(appendResult.error || "Failed to append data");
+            }
+        }
+        
+        return true;
     } catch (error) {
-        console.error('Error posting data:', error);
+        console.error('Error in postData:', error);
+        throw error;
     }
+}
+
+// Loading indicator functions
+function showLoading() {
+    document.getElementById('loading').style.display = 'block';
+}
+
+function hideLoading() {
+    document.getElementById('loading').style.display = 'none';
 }
