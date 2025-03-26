@@ -6,7 +6,7 @@
 \pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
 
 \f0\fs24 \cf0 // Replace with your Google Apps Script URL\
-const SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL';\
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw2SuSAAXthVLpEb2Av-f1kJAAISWiE6klnzfHJE1KAW9R5Hjo2IUArQK4wPGovMlk/exec';\
 \
 document.addEventListener('DOMContentLoaded', function() \{\
     // Initialize UI\
